@@ -1,141 +1,61 @@
-# plan.md — MVP
+# MVP plan & architecture
 
-## Goal
+## Product vision
 
-A minimal, mobile‑friendly site to:
+Build a lightweight personal scratchpad for capturing messy ideas, iterating on them with an LLM, and launching a clean follow-up conversation once the request is polished.
 
-1. capture ideas quickly,
-2. refine them with LLM suggestions,
-3. send the finalized prompt to Gemini with one click.
+## Final architecture
 
-## Scope (MVP)
+- **Hosting:** Static site — ideal for GitHub Pages or any static host. No backend required.
+- **Tech stack:** Vanilla HTML, CSS, and JavaScript. Zero build tooling.
+- **Persistence:** Browser `localStorage` with JSON export for manual backups.
+- **LLM integration:** Direct calls to the OpenAI Chat Completions API from the client. The user provides their API key, which is stored only in localStorage.
+- **Data model:**
+  ```ts
+  interface Ticket {
+    id: string;
+    title: string;
+    idea: string;
+    summary: string;
+    createdAt: string; // ISO timestamp
+    updatedAt: string;
+    messages: Array<{
+      id: string;
+      role: "user" | "assistant" | "note";
+      content: string;
+      createdAt: string;
+    }>;
+  }
+  ```
+- **Interaction flow:**
+  1. Capture a raw idea in a ticket.
+  2. Add free-form notes or send prompts to OpenAI (full conversation history is sent, excluding personal notes).
+  3. Populate and refine a “Refined request” field (auto-filled from the latest assistant reply if desired).
+  4. Copy the refined request to start a fresh LLM chat in a new tab.
 
-* Single‑user.
-* Public GitHub Pages frontend.
-* One serverless function as a secure API proxy.
-* Simple database for persistence.
-* Kanban board UI: Columns = Draft → Refining → Ready → Sent.
+## Key screens
 
-## Architecture
+1. **Tickets list (sidebar):** searchable, shows last-updated date and message count.
+2. **Workspace:** editable title + idea, conversation thread, refined request tools.
+3. **Dialogs:** confirmation (delete/clear) and export (JSON download).
 
-* **Frontend:** Vite + React + TypeScript + Tailwind. Deployed to GitHub Pages.
-* **Backend:** Cloudflare Worker to:
+## MVP feature checklist
 
-  * CRUD ideas in a lightweight database,
-  * call Gemini API for suggestions and runs,
-  * keep secrets off the client.
-* **Database:** **Cloudflare D1 (SQLite)** bound to the Worker. No external infrastructure.
-* **LLM:** Gemini 1.5 Pro (Google AI Studio API), called only from the Worker.
+- [x] Create, save, and delete tickets.
+- [x] Store ticket content locally and keep it synced with `localStorage`.
+- [x] Maintain a structured conversation with user messages, assistant replies, and human-only notes.
+- [x] Call OpenAI’s API with conversation history; surface responses inline.
+- [x] Copy refined request and open a new LLM chat tab.
+- [x] Export all data as JSON for backups.
+- [x] Responsive layout that works well on phones and desktops.
 
-## Data Model (D1 / SQLite)
+## Post-MVP ideas
 
-```sql
--- ideas
-CREATE TABLE IF NOT EXISTS ideas (
-  id TEXT PRIMARY KEY,             -- uuid
-  title TEXT NOT NULL,
-  body TEXT NOT NULL,
-  status TEXT NOT NULL DEFAULT 'draft', -- draft|refining|ready|sent
-  model TEXT DEFAULT 'gemini-1.5-pro',
-  created_at TEXT NOT NULL,        -- ISO8601
-  updated_at TEXT NOT NULL
-);
-
--- revisions (optional for MVP; can be added later)
-CREATE TABLE IF NOT EXISTS revisions (
-  id TEXT PRIMARY KEY,
-  idea_id TEXT NOT NULL REFERENCES ideas(id) ON DELETE CASCADE,
-  source TEXT NOT NULL,            -- user|llm
-  snapshot TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-
--- runs (log of prompt executions)
-CREATE TABLE IF NOT EXISTS runs (
-  id TEXT PRIMARY KEY,
-  idea_id TEXT REFERENCES ideas(id) ON DELETE SET NULL,
-  prompt TEXT NOT NULL,
-  response TEXT,                   -- JSON string
-  model TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS idx_ideas_status ON ideas(status);
-CREATE INDEX IF NOT EXISTS idx_revisions_idea ON revisions(idea_id);
-CREATE INDEX IF NOT EXISTS idx_runs_idea ON runs(idea_id);
-```
-
-## API (Worker)
-
-```
-POST   /api/ideas                  {title, body} → create (status=draft)
-GET    /api/ideas?query=&status=   → list (LIKE on title/body; optional status)
-GET    /api/ideas/:id              → get one
-PATCH  /api/ideas/:id              {title?, body?, status?}
-POST   /api/ideas/:id/suggest      {text?} → Gemini suggestions (JSON)
-POST   /api/ideas/:id/run          {prompt?, model?} → Gemini run (JSON)
-GET    /api/ideas/:id/runs         → list runs
-```
-
-Auth to the Worker via a single bearer token. Secrets live in Worker env: `GEMINI_API_KEY`, `API_TOKEN`.
-
-## UI (Kanban + Editor)
-
-* **Kanban board:** 4 columns; desktop drag‑and‑drop; on mobile use explicit “Move to …” actions.
-* **Card:** title + first line of body; tap to open editor.
-* **Editor:** textarea + buttons for Suggest / Run; simple side panel lists suggestions with Apply.
-* **Search:** client‑side filter (title/body) with a debounced query to `/api/ideas?query=`.
-
-## Mobile & Accessibility
-
-* Columns collapse to a single list with tabs for Draft/Refining/Ready/Sent.
-* Sticky bottom action bar on small screens for Save/Suggest/Run.
-* 44–48px touch targets; semantic elements; visible focus; ARIA labels; high contrast.
-
-## Gemini Integration (Worker)
-
-* `suggest`: send current text; return `{questions[], fixes[], variants[]}`.
-* `run`: send final prompt; return model response; store in `runs`.
-
-## Deployment
-
-1. **Database**: `wrangler d1 create ideas_db`; apply schema via `wrangler d1 execute ideas_db --file=./schema.sql`.
-2. **Worker**: bind D1 in `wrangler.toml`:
-
-   ```toml
-   [[d1_databases]]
-   binding = "DB"
-   database_name = "ideas_db"
-   database_id = "<id from create>"
-   ```
-
-   Add secrets: `wrangler secret put GEMINI_API_KEY`, `wrangler secret put API_TOKEN`.
-3. **Frontend**: build with Vite and deploy to GitHub Pages via Actions.
-4. **CORS**: Restrict Worker responses to your Pages domain.
-
-## Milestones
-
-* **M0:** Vite app; kanban board UI; list ideas from D1.
-* **M1:** Create/update ideas; move status between columns.
-* **M2:** Editor page; Suggest endpoint + apply suggestions.
-* **M3:** Run endpoint + display streamed response.
-* **M4:** Mobile polish, basic a11y, simple search.
-
-## Files to Generate
-
-* `/frontend/` Vite React TS app (Tailwind)
-
-  * `App.tsx` (kanban + routes)
-  * `components/Board.tsx`, `IdeaCard.tsx`, `Editor.tsx`
-  * `lib/api.ts`
-* `/worker/`
-
-  * `src/index.ts` (routes)
-  * `schema.sql` (SQL above)
-  * `wrangler.toml`
-* `.github/workflows/pages.yml`
-* `README.md` (setup steps)
-
-## Notes
-
-* This keeps the stack minimal and self‑contained on Cloudflare (Worker + D1).
-* If you prefer a hosted Postgres later, swap D1 for Supabase/Neon without changing the API contract.
+1. **Import backups:** allow loading a previously exported JSON file.
+2. **Tagging & filters:** organize tickets by theme or priority.
+3. **Prompt templates:** quick actions to generate research questions or outline next steps.
+4. **Alternative LLM providers:** add model selector and support for custom endpoints.
+5. **Multi-device sync:** optional backend (Supabase / Firebase) for authenticated users.
+6. **Shareable tickets:** readonly publish link.
+7. **Command palette:** keyboard shortcuts for power users.
+8. **Attachment support:** link reference docs or images stored elsewhere.
