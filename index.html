@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Idea Tickets</title>
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="branding">
+          <span class="logo" aria-hidden="true">✳︎</span>
+          <div>
+            <h1>Idea Tickets</h1>
+            <p class="tagline">
+              Capture raw thoughts, refine with AI, launch fresh conversations.
+            </p>
+          </div>
+        </div>
+        <div class="header-actions">
+          <button id="createTicketBtn" class="primary">New ticket</button>
+          <button id="exportBtn" class="ghost">Export</button>
+        </div>
+      </header>
+
+      <main class="layout">
+        <aside class="sidebar" aria-label="Tickets list">
+          <div class="search">
+            <input
+              type="search"
+              id="searchInput"
+              placeholder="Search tickets"
+              aria-label="Search tickets"
+            />
+          </div>
+          <div class="ticket-list" id="ticketList" role="list"></div>
+        </aside>
+
+        <section class="workspace" id="workspace" aria-live="polite"></section>
+      </main>
+    </div>
+
+    <template id="ticketTemplate">
+      <article class="ticket" role="listitem" tabindex="0">
+        <div class="ticket-main">
+          <h2 class="ticket-title"></h2>
+          <p class="ticket-snippet"></p>
+        </div>
+        <dl class="ticket-meta">
+          <div>
+            <dt>Updated</dt>
+            <dd class="ticket-updated"></dd>
+          </div>
+          <div>
+            <dt>Messages</dt>
+            <dd class="ticket-messages"></dd>
+          </div>
+        </dl>
+      </article>
+    </template>
+
+    <template id="workspaceTemplate">
+      <div class="workspace-inner">
+        <section class="panel">
+          <header class="panel-header">
+            <div class="title-group">
+              <label for="ticketTitle" class="panel-label">Title</label>
+              <input
+                id="ticketTitle"
+                class="panel-input"
+                type="text"
+                placeholder="Give this idea a short title"
+              />
+            </div>
+            <button id="deleteTicketBtn" class="danger" type="button">
+              Delete
+            </button>
+          </header>
+          <label for="ticketIdea" class="panel-label">Raw idea</label>
+          <textarea
+            id="ticketIdea"
+            class="panel-textarea"
+            rows="5"
+            placeholder="Drop your messy thoughts here"
+          ></textarea>
+          <div class="panel-actions">
+            <button id="saveTicketBtn" class="primary" type="button">
+              Save
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <header class="panel-header">
+            <h2>Conversation</h2>
+            <button id="clearConversationBtn" class="ghost" type="button">
+              Clear
+            </button>
+          </header>
+          <ul class="conversation" id="conversation" aria-live="polite"></ul>
+          <form id="messageForm" class="message-form">
+            <label for="messageInput" class="panel-label">Add message</label>
+            <textarea
+              id="messageInput"
+              rows="3"
+              placeholder="Ask the model or jot a note"
+            ></textarea>
+            <div class="message-actions">
+              <div class="api-controls">
+                <label for="apiKeyInput">OpenAI API key</label>
+                <input
+                  id="apiKeyInput"
+                  type="password"
+                  placeholder="sk-..."
+                  autocomplete="off"
+                />
+                <button id="saveKeyBtn" type="button" class="ghost">
+                  Save key
+                </button>
+              </div>
+              <div class="buttons">
+                <button id="addNoteBtn" type="button" class="ghost">
+                  Add note
+                </button>
+                <button id="sendMessageBtn" type="submit" class="primary">
+                  Send to LLM
+                </button>
+              </div>
+            </div>
+            <p class="hint">
+              Messages are sent with history to the OpenAI API. Your key is
+              stored locally in this browser.
+            </p>
+          </form>
+        </section>
+
+        <section class="panel">
+          <header class="panel-header">
+            <div>
+              <h2>Refined request</h2>
+              <p class="panel-subtitle">
+                Polish this summary before launching a fresh chat.
+              </p>
+            </div>
+            <div class="buttons">
+              <button id="generateSummaryBtn" class="ghost" type="button">
+                Use last assistant reply
+              </button>
+              <button id="copySummaryBtn" class="primary" type="button">
+                Copy &amp; start clean chat
+              </button>
+            </div>
+          </header>
+          <textarea
+            id="summaryInput"
+            class="panel-textarea"
+            rows="4"
+            placeholder="Summarize the refined request here"
+          ></textarea>
+        </section>
+      </div>
+    </template>
+
+    <template id="messageTemplate">
+      <li class="message">
+        <div class="message-header">
+          <span class="message-role"></span>
+          <time class="message-time" datetime=""></time>
+          <button class="ghost small delete-message" type="button">
+            Remove
+          </button>
+        </div>
+        <p class="message-content"></p>
+      </li>
+    </template>
+
+    <dialog id="exportDialog">
+      <form method="dialog">
+        <header>
+          <h2>Export data</h2>
+        </header>
+        <p>
+          You can download a JSON backup of your tickets. Keep it safe—it
+          contains your ideas and conversation history.
+        </p>
+        <textarea id="exportOutput" readonly rows="10"></textarea>
+        <menu>
+          <button value="cancel" class="ghost">Close</button>
+          <button id="downloadExportBtn" value="default" class="primary">
+            Download
+          </button>
+        </menu>
+      </form>
+    </dialog>
+
+    <dialog id="confirmDialog">
+      <form method="dialog">
+        <p id="confirmMessage"></p>
+        <menu>
+          <button value="cancel" class="ghost">Cancel</button>
+          <button value="confirm" class="danger">Delete</button>
+        </menu>
+      </form>
+    </dialog>
+
+    <script src="app.js" type="module"></script>
+  </body>
+</html>
