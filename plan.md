@@ -1,74 +1,102 @@
-# Prompt for AI Agent Task Scheduler Project
+# plan.md — MVP
 
-You are an expert full-stack software architect and senior developer. I have a project idea, and I need you to help me design the architecture and create a detailed, step-by-step development plan. Your output should be comprehensive, well-structured, and provide clear guidance for implementation.
+## Goal
 
-## Project Title: AI Agent Task Scheduler
+A minimal, mobile‑friendly site to:
 
-### Project Overview
+1. capture ideas quickly,
+2. refine them with LLM suggestions,
+3. send the finalized prompt to Gemini with one click.
 
-I want to build a simple web application that functions like a "todo list" but is specifically designed for creating, managing, and scheduling tasks for AI agents. Each "task" or "ticket" in the list is essentially a configurable API request to an OpenAI model. The application should allow me to define the request details, schedule it for a future time, and then automatically send the request. Once the OpenAI API responds, the result should be captured and displayed within the corresponding task ticket.
+## Scope (MVP)
 
-### Core Feature Requirements
+* Single‑user.
+* Public GitHub Pages frontend.
+* One serverless function as a secure API proxy.
+* Persistence via **GitHub Issues** in a private repo (no database to manage).
+* Simple **kanban board** UI: Columns = Draft → Refining → Ready → Sent.
 
-1.  **Task Management (CRUD):**
-    * **Create:** A user should be able to create a new task. The creation form must include fields for:
-        * A short, descriptive `Title`.
-        * A more detailed `Description` of the goal.
-        * The target `OpenAI Model` (e.g., a dropdown for `gpt-4o`, `gpt-4-turbo`, etc.).
-        * The `Prompt` or request payload to be sent to the API.
-        * A `Schedule Time` (a date and time picker) for when the request should be executed.
-    * **Read:** Display a list of all created tasks on a main dashboard. Each item in the list should show its title, status, and scheduled time. Clicking on a task should show its full details.
-    * **Update:** A user should be able to edit all the details of a task, but only *before* it has been executed.
-    * **Delete:** A user should be able to delete a task.
+## Architecture
 
-2.  **Task Status Tracking:**
-    * Each task must have a clear status that updates automatically. The statuses should be:
-        * `Pending`: The task has been created but is not yet scheduled for execution.
-        * `Scheduled`: The task is queued and waiting for its execution time.
-        * `In-Progress`: The API request has been sent to OpenAI and we are awaiting a response.
-        * `Completed`: We have successfully received a response from OpenAI.
-        * `Error`: The API call failed for some reason (e.g., invalid API key, server error).
+* **Frontend:** Vite + React + TypeScript + Tailwind. Deployed to GitHub Pages.
+* **Backend:** Cloudflare Worker (or Netlify/Pages Functions) to:
 
-3.  **Scheduling Engine:**
-    * This is the core of the application. There must be a reliable backend mechanism that checks for scheduled tasks and executes them at the correct time.
-    * This should work even if the user has closed their browser.
+  * create/read/update ideas using the GitHub REST API (Issues),
+  * call Gemini API for suggestions and runs,
+  * keep secrets off the client.
+* **Storage:** GitHub Issues in a private repo (labels carry status; issue body stores content as markdown with optional YAML front‑matter).
+* **LLM:** Gemini 1.5 Pro (Google AI Studio API) called only from the Worker.
 
-4.  **OpenAI Integration:**
-    * The backend must securely connect to the OpenAI API using an API key.
-    * It should construct the API request based on the data stored in the task ticket.
-    * It must handle both successful responses and potential errors from the API.
+## Data Model (GitHub Issues)
 
-5.  **Response Handling:**
-    * When a task is `Completed`, the full JSON response from the OpenAI API should be saved.
-    * The response should be neatly displayed in the task's detail view. If there was an `Error`, the error message should be displayed instead.
+* **Issue title:** idea title
+* **Issue body:** markdown text for the idea/prompt (optional front‑matter: `model`, `version`)
+* **Labels:** `status/draft`, `status/refining`, `status/ready`, `status/sent`
+* **Comments:** store LLM suggestions or revision snapshots as needed
 
-### My Request to You
+## API (Worker)
 
-Please provide the following:
+```
+POST   /api/ideas                {title, body} → create issue with label status/draft
+GET    /api/ideas?query=&status= → list issues (filter by label)
+GET    /api/ideas/:number        → get one (issue number)
+PATCH  /api/ideas/:number        {title?, body?, status?}
+POST   /api/ideas/:number/suggest {text?} → Gemini suggestions (returns JSON)
+POST   /api/ideas/:number/run     {prompt?, model?} → Gemini run (returns response JSON)
+```
 
-**1. Recommended Technology Stack:**
-   * Suggest a modern, practical technology stack.
-   * **Frontend:** Recommend a framework (e.g., React, Vue, Svelte) and key libraries for UI components and state management.
-   * **Backend:** Recommend a language and framework (e.g., Node.js with Express, Python with FastAPI, etc.).
-   * **Database:** Recommend a database type (e.g., PostgreSQL, MongoDB) and justify your choice.
-   * **Scheduling Mechanism:** Propose a specific technology or pattern for the scheduling engine (e.g., a cron job, a library like `node-cron`, or a message queue system like BullMQ with Redis).
+Auth to the Worker via a single bearer token; Worker holds **GITHUB_APP_TOKEN** and **GEMINI_API_KEY**.
 
-**2. Detailed Architecture Plan:**
-   * **Frontend Architecture:** Describe the key components you would build (e.g., `TaskList`, `TaskItem`, `TaskDetailView`, `CreateEditForm`).
-   * **Backend Architecture:**
-      * Define the necessary API endpoints (e.g., `POST /api/tasks`, `GET /api/tasks`, `PUT /api/tasks/:id`, `DELETE /api/tasks/:id`).
-      * Describe the service-layer logic for handling a task's lifecycle.
-   * **Database Schema:** Provide a clear schema for the main `tasks` table, including column names, data types, and brief descriptions (e.g., `id`, `title`, `prompt`, `status`, `scheduled_at`, `response_payload`, etc.).
-   * **Scheduler Design:** Explain in detail how the scheduling component would work. How does it pick up jobs? How does it interact with the database and the OpenAI service?
+## UI (Kanban + Editor)
 
-**3. Step-by-Step Development Plan:**
-   * Break down the project into logical, sequential phases. This should be a clear roadmap from project setup to a functional application.
-   * Example phases might include:
-      1.  **Phase 1: Project Setup & Backend Foundation:** (Setup project structure, initialize backend, design DB schema, create basic CRUD API endpoints without logic).
-      2.  **Phase 2: Basic Frontend:** (Build UI components to list, create, and view tasks, connecting them to the backend API).
-      3.  **Phase 3: Core Scheduling Logic:** (Implement the background worker/cron job to process tasks).
-      4.  **Phase 4: OpenAI Integration:** (Write the service to securely call the OpenAI API and handle the response).
-      5.  **Phase 5: Finalizing the Loop:** (Connect the scheduler to the OpenAI service, save responses to the DB, and display them on the frontend).
-      6.  **Phase 6: Polishing:** (Add error handling, loading states, and UI improvements).
+* **Kanban board** (mobile‑first): 4 columns; draggable cards on desktop, buttons for “Move to …” on mobile.
+* **Card:** title + 1–2 lines of body; tap to open editor.
+* **Editor:** large textarea + “Suggest” and “Run” buttons; right panel lists suggestions (accept/apply button appends to editor).
+* **Search:** simple client‑side filter by title text.
 
-Please provide a detailed and well-organized response that I can use as a blueprint for building this application. Be explicit with your recommendations and justify your architectural decisions.
+## Mobile & Accessibility
+
+* Responsive stack (columns collapse to a single column list on small screens with a tab bar to switch columns).
+* 44–48px touch targets; sticky bottom action bar for Save/Suggest/Run.
+* Semantic HTML (`main`, `nav`, `button`), visible focus, ARIA labels, high contrast.
+
+## Gemini Integration (Worker)
+
+* `suggest`: send current text; return structured JSON `{questions[], fixes[], variants[]}`.
+* `run`: send final prompt; return model response; optionally post a comment on the issue with the response summary.
+
+## Deployment
+
+1. Create private GitHub repo for storage (issues enabled).
+2. Create GitHub App or PAT with `repo` scope; store token as Worker secret.
+3. `wrangler secret put GEMINI_API_KEY` and `GITHUB_APP_TOKEN`.
+4. Deploy Worker; set CORS to your Pages domain.
+5. GitHub Pages workflow for the Vite build.
+
+## Milestones
+
+* **M0:** Scaffold Vite app; kanban board UI; read/list issues.
+* **M1:** Create/update idea; move between columns (update labels).
+* **M2:** Editor page; "Suggest" endpoint + UI to apply suggestions.
+* **M3:** "Run" endpoint + response display.
+* **M4:** Mobile polish, basic a11y pass, simple search.
+
+## Files to Generate
+
+* `/frontend/` Vite React TS app (Tailwind configured)
+
+  * `App.tsx` (kanban board + routing)
+  * `components/IdeaCard.tsx`, `components/Board.tsx`, `components/Editor.tsx`
+  * `lib/api.ts` (fetch wrappers)
+  * `index.html`, `main.tsx`, `tailwind.css`
+* `/worker/` Cloudflare Worker
+
+  * `src/index.ts` (routes above)
+  * `wrangler.toml` (bindings for tokens, CORS)
+* `.github/workflows/pages.yml` (build & deploy)
+* `README.md` (setup instructions)
+
+## Notes
+
+* This MVP avoids external databases and PWA/offline features. Add PWA/IndexedDB later if needed.
+* If multi‑provider support is desired, keep a simple provider interface in the Worker.
